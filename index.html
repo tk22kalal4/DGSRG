@@ -123,6 +123,8 @@
         </form>
     </div>
 
+    <div id="debug" style="margin: 20px; padding: 15px; background: #f0f0f0;"></div>
+
     <!-- Quiz Taker -->
     <div class="quiz-taker" id="quizContainer" style="display: none;">
         <div id="quizContent"></div>
@@ -135,6 +137,7 @@
         <h3>Share Your Quiz:</h3>
         <div class="share-link" id="quizLink"></div>
     </div>
+
 
 <script>
     // Firebase Configuration
@@ -149,43 +152,93 @@
     };
 
     // Initialize Firebase
-    firebase.initializeApp(firebaseConfig);
+    try {
+        firebase.initializeApp(firebaseConfig);
+        console.log('Firebase initialized successfully');
+        logToDebug('Firebase initialized successfully');
+    } catch (error) {
+        console.error('Firebase initialization error:', error);
+        logToDebug('Firebase init error: ' + error.message);
+    }
+
     const db = firebase.firestore();
     const storage = firebase.storage();
 
-    // Quiz Creator Logic
+    // Debug logging function
+    function logToDebug(message) {
+        const debugDiv = document.getElementById('debug');
+        debugDiv.innerHTML += `<div>[${new Date().toLocaleTimeString()}] ${message}</div>`;
+    }
+
     document.getElementById('quizForm').addEventListener('submit', async (e) => {
         e.preventDefault();
-        
-        // Get form values
-        const question = document.getElementById('question').value;
-        const options = [...document.getElementsByClassName('option')].map(o => o.value);
-        const correctAnswer = document.querySelector('input[name="correct"]:checked').value;
-        const explanation = document.getElementById('explanation').value;
-        const imageFile = document.getElementById('questionImage').files[0];
+        logToDebug('Form submission started');
 
-        // Upload image
-        let imageUrl = '';
-        if (imageFile) {
-            const storageRef = storage.ref(`quiz_images/${Date.now()}_${imageFile.name}`);
-            await storageRef.put(imageFile);
-            imageUrl = await storageRef.getDownloadURL();
+        try {
+            // Collect form data
+            const question = document.getElementById('question').value;
+            const options = [...document.getElementsByClassName('option')].map(o => o.value);
+            const correctAnswer = document.querySelector('input[name="correct"]:checked').value;
+            const explanation = document.getElementById('explanation').value;
+            const imageFile = document.getElementById('questionImage').files[0];
+
+            logToDebug('Form data collected:');
+            logToDebug(`Question: ${question.substring(0, 20)}...`);
+            logToDebug(`Options: ${options.join(', ')}`);
+            logToDebug(`Correct Answer Index: ${correctAnswer}`);
+            logToDebug(`Explanation: ${explanation.substring(0, 20)}...`);
+            logToDebug(`Image File: ${imageFile ? imageFile.name : 'None'}`);
+
+            // Test Firestore connection
+            logToDebug('Testing Firestore connection...');
+            const testRef = db.collection('test').doc('connection-test');
+            await testRef.set({ test: true });
+            logToDebug('Firestore connection successful');
+
+            let imageUrl = '';
+            if (imageFile) {
+                try {
+                    logToDebug('Starting image upload...');
+                    const storageRef = storage.ref(`quiz_images/${Date.now()}_${imageFile.name}`);
+                    await storageRef.put(imageFile);
+                    imageUrl = await storageRef.getDownloadURL();
+                    logToDebug(`Image uploaded successfully: ${imageUrl}`);
+                } catch (uploadError) {
+                    console.error('Upload error:', uploadError);
+                    logToDebug(`Image upload failed: ${uploadError.message}`);
+                }
+            }
+
+            // Create quiz document
+            logToDebug('Creating quiz document...');
+            const quizRef = await db.collection('quizzes').add({
+                question,
+                options,
+                correctAnswer: parseInt(correctAnswer),
+                explanation,
+                imageUrl,
+                createdAt: firebase.firestore.FieldValue.serverTimestamp()
+            });
+            
+            logToDebug(`Quiz created with ID: ${quizRef.id}`);
+
+            // Generate share link
+            const quizLink = `${window.location.origin}/?quizId=${quizRef.id}`;
+            logToDebug(`Share link generated: ${quizLink}`);
+
+            // Show share link
+            document.getElementById('quizLink').textContent = quizLink;
+            document.getElementById('shareSection').style.display = 'block';
+
+            // TESTING: Force create a sample share link
+            const testQuizLink = `${window.location.origin}/?quizId=TEST_QUIZ_123`;
+            logToDebug(`TEST SHARE LINK: ${testQuizLink}`);
+
+        } catch (error) {
+            console.error('Form submission error:', error);
+            logToDebug(`Error: ${error.message}`);
+            alert('Error creating quiz. Check console for details.');
         }
-
-        // Save to Firestore
-        const quizRef = await db.collection('quizzes').add({
-            question,
-            options,
-            correctAnswer: parseInt(correctAnswer),
-            explanation,
-            imageUrl,
-            createdAt: firebase.firestore.FieldValue.serverTimestamp()
-        });
-
-        // Show share link
-        const quizLink = `${window.location.href}?quizId=${quizRef.id}`;
-        document.getElementById('quizLink').textContent = quizLink;
-        document.getElementById('shareSection').style.display = 'block';
     });
 
     // Quiz Taker Logic
